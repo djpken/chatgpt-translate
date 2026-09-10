@@ -1,0 +1,6 @@
+# Local page snapshot used for inspection; do not publish it.
+.target.html
+
+# Operating-system metadata
+.DS_Store
+
