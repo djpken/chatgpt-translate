@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ChatGPT Translate 版面與語言預設
 // @namespace    https://chatgpt.com/
-// @version      1.4.0
-// @description  移除翻譯頁標題區、讓寬螢幕使用兩個 600x700px 欄位，並預設來源與目標語言。
+// @version      1.5.0
+// @description  移除翻譯頁標題區、解除外層寬度限制，讓寬螢幕使用兩個 600x700px 欄位。
 // @match        https://chatgpt.com/zh-Hant/translate/*
 // @run-at       document-idle
 // @grant        none
@@ -20,6 +20,8 @@
     'textarea[aria-label="要翻譯的來源內容"]';
   const RESULT_TEXTAREA_SELECTOR =
     'div > div:nth-of-type(2) > div:nth-of-type(2) > div > textarea';
+  const TRANSLATION_PANEL_SELECTOR =
+    '[data-testid="translate-source-panel"], [data-testid="translate-output-panel"]';
   const TRANSLATION_TEXTAREA_SELECTOR = [
     SOURCE_TEXTAREA_SELECTOR,
     RESULT_TEXTAREA_SELECTOR,
@@ -29,10 +31,12 @@
   const TEXTAREA_WIDTH = '600px';
   const TEXTAREA_HEIGHT = '700px';
   const TRANSLATION_LAYOUT_WIDTH = 'calc(600px + 600px + 2rem)';
+  const TRANSLATION_PAGE_WIDTH = 'calc(600px + 600px + 4rem)';
   const WIDE_LAYOUT_BREAKPOINT = 1280;
 
   const HEADER_SPACING_ATTRIBUTE = 'data-cgt-header-spacing-reset';
   const TRANSLATION_LAYOUT_ATTRIBUTE = 'data-cgt-translation-layout';
+  const TRANSLATION_PANEL_ATTRIBUTE = 'data-cgt-translation-panel';
   const TEXTAREA_EXPANDED_ATTRIBUTE = 'data-cgt-textarea-expanded';
   const TEXTAREA_WRAPPER_ATTRIBUTE = 'data-cgt-textarea-wrapper';
   const STYLE_ID = 'cgt-custom-style';
@@ -98,6 +102,17 @@
         width: 100% !important;
       }
 
+      [${TRANSLATION_PANEL_ATTRIBUTE}="true"] {
+        box-sizing: border-box !important;
+        flex: 1 1 100% !important;
+        height: ${TEXTAREA_HEIGHT} !important;
+        max-height: none !important;
+        max-width: 100% !important;
+        min-height: ${TEXTAREA_HEIGHT} !important;
+        min-width: 0 !important;
+        width: 100% !important;
+      }
+
       [${TRANSLATION_LAYOUT_ATTRIBUTE}="true"] {
         box-sizing: border-box !important;
         flex-wrap: wrap !important;
@@ -115,6 +130,13 @@
         }
 
         [${TEXTAREA_EXPANDED_ATTRIBUTE}="true"] {
+          max-width: none !important;
+          min-width: ${TEXTAREA_WIDTH} !important;
+          width: ${TEXTAREA_WIDTH} !important;
+        }
+
+        [${TRANSLATION_PANEL_ATTRIBUTE}="true"] {
+          flex: 0 0 ${TEXTAREA_WIDTH} !important;
           max-width: none !important;
           min-width: ${TEXTAREA_WIDTH} !important;
           width: ${TEXTAREA_WIDTH} !important;
@@ -173,6 +195,7 @@
     const textareaWidth = useWideLayout ? TEXTAREA_WIDTH : '100%';
     const maxWidth = useWideLayout ? 'none' : '100%';
     const minWidth = useWideLayout ? TEXTAREA_WIDTH : '0';
+    const flexValue = useWideLayout ? `0 0 ${TEXTAREA_WIDTH}` : '1 1 100%';
 
     textareas.forEach((textarea) => {
       textarea.setAttribute(TEXTAREA_EXPANDED_ATTRIBUTE, 'true');
@@ -190,8 +213,27 @@
         setImportantStyle(textarea.parentElement, 'max-width', maxWidth);
         setImportantStyle(textarea.parentElement, 'min-width', minWidth);
         setImportantStyle(textarea.parentElement, 'width', textareaWidth);
+        setImportantStyle(textarea.parentElement, 'height', TEXTAREA_HEIGHT);
+        setImportantStyle(
+          textarea.parentElement,
+          'min-height',
+          TEXTAREA_HEIGHT,
+        );
+        setImportantStyle(textarea.parentElement, 'flex', flexValue);
       }
     });
+
+    document
+      .querySelectorAll(TRANSLATION_PANEL_SELECTOR)
+      .forEach((panel) => {
+        panel.setAttribute(TRANSLATION_PANEL_ATTRIBUTE, 'true');
+        setImportantStyle(panel, 'flex', flexValue);
+        setImportantStyle(panel, 'max-width', maxWidth);
+        setImportantStyle(panel, 'min-width', minWidth);
+        setImportantStyle(panel, 'width', textareaWidth);
+        setImportantStyle(panel, 'height', TEXTAREA_HEIGHT);
+        setImportantStyle(panel, 'min-height', TEXTAREA_HEIGHT);
+      });
 
     if (textareas.length < 2) {
       return;
@@ -200,22 +242,49 @@
     const commonAncestor = findCommonAncestor(textareas.slice(0, 2));
 
     if (commonAncestor) {
-      commonAncestor.setAttribute(TRANSLATION_LAYOUT_ATTRIBUTE, 'true');
-      setImportantStyle(
-        commonAncestor,
-        'max-width',
-        maxWidth,
-      );
-      setImportantStyle(
-        commonAncestor,
-        'min-width',
-        useWideLayout ? TRANSLATION_LAYOUT_WIDTH : '0',
-      );
-      setImportantStyle(
-        commonAncestor,
-        'width',
-        useWideLayout ? TRANSLATION_LAYOUT_WIDTH : '100%',
-      );
+      const layoutContainer = commonAncestor.parentElement;
+      const layoutElements = [commonAncestor, layoutContainer].filter(Boolean);
+
+      for (
+        let ancestor = layoutContainer?.parentElement;
+        ancestor && ancestor.tagName !== 'MAIN';
+        ancestor = ancestor.parentElement
+      ) {
+        const classTokens = getClassTokens(ancestor);
+
+        if (classTokens.some((token) => token.startsWith('max-w-'))) {
+          layoutElements.push(ancestor);
+        }
+      }
+
+      Array.from(new Set(layoutElements)).forEach((element) => {
+        const isOuterPageContainer = getClassTokens(element).includes(
+          'max-w-5xl',
+        );
+        const layoutWidth = isOuterPageContainer
+          ? TRANSLATION_PAGE_WIDTH
+          : TRANSLATION_LAYOUT_WIDTH;
+
+        element.setAttribute(TRANSLATION_LAYOUT_ATTRIBUTE, 'true');
+        setImportantStyle(element, 'max-width', maxWidth);
+        setImportantStyle(
+          element,
+          'min-width',
+          useWideLayout ? layoutWidth : '0',
+        );
+        setImportantStyle(
+          element,
+          'width',
+          useWideLayout ? layoutWidth : '100%',
+        );
+      });
+
+      if (layoutContainer) {
+        setImportantStyle(layoutContainer, 'margin-top', '0');
+        setImportantStyle(layoutContainer, 'margin-block-start', '0');
+      }
+
+      resetTopSpacing(layoutContainer);
     }
   }
 
@@ -225,6 +294,34 @@
 
   function setImportantStyle(element, property, value) {
     element.style.setProperty(property, value, 'important');
+  }
+
+  function getClassTokens(element) {
+    return typeof element.className === 'string'
+      ? element.className.split(/\s+/).filter(Boolean)
+      : [];
+  }
+
+  function resetTopSpacing(layoutContainer) {
+    for (
+      let ancestor = layoutContainer?.parentElement;
+      ancestor && ancestor.tagName !== 'MAIN';
+      ancestor = ancestor.parentElement
+    ) {
+      const classTokens = getClassTokens(ancestor);
+      const hasTopSpacingClass = classTokens.some(
+        (token) =>
+          token === 'pt-12' ||
+          token === 'py-10' ||
+          token === 'md:py-10',
+      );
+
+      if (hasTopSpacingClass) {
+        setImportantStyle(ancestor, 'padding-top', '0');
+        setImportantStyle(ancestor, 'padding-block-start', '0');
+        return;
+      }
+    }
   }
 
   function findCommonAncestor(elements) {
